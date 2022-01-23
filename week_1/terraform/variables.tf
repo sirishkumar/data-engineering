@@ -22,3 +22,9 @@ variable storage_class {
     default     = "STANDARD"
     description = "GCP bucket storage class"
 }
+
+variable "BQ_DATASET" {
+    type        = string
+    default     = "trips_data_all"
+    description = "BigQuery Dataset to store raw data"
+}

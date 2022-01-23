@@ -36,4 +36,7 @@ resource "google_storage_bucket" "data-lake" {
     force_destroy = true
 }
 
-
+resource "google_bigquery_dataset" "dataset" {
+    dataset_id = var.BQ_DATASET
+    location = var.region
+}
