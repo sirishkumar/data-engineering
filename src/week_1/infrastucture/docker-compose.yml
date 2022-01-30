@@ -9,8 +9,6 @@ services:
     -  "./ny_taxi_postgres_data:/var/lib/postgresql/data:rw"
     ports:
     - "5432:5432"
-    networks:
-    - postgres
   pgadmin:
     image: dpage/pgadmin4
     environment:
@@ -18,8 +16,7 @@ services:
       - PGADMIN_DEFAULT_PASSWORD=root
     ports:
     - "8080:80"
-    networks:
-    - postgres
 networks:
-  postgres:
-    driver: bridge
+  default:
+    external: true
+    name: airflow_default

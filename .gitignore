@@ -8,3 +8,4 @@ taxi+_zone_lookup.csvoutput.csv
 logs
 plugins
 __pycache__
+*.csv

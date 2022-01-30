@@ -11,11 +11,18 @@ import pyarrow.csv as pv
 import pyarrow.parquet as pq
 from pydata_google_auth import default
 
+from ingest_data import ingest_data_postgres
 
 LOGGER = logging.getLogger(__name__)
 
 PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 BUCKET = os.environ.get("GCP_GCS_BUCKET")
+PG_USER = os.getenv("PG_USER")
+PG_PASSWORD = os.getenv("PG_PASSWORD")
+PG_HOST = os.getenv("PG_HOST")
+PG_PORT = os.getenv("PG_PORT")
+PG_DATABASE = os.getenv("PG_DATABASE")
+
 
 path_to_local_home = Path(os.environ.get("AIRFLOW_HOME", "/opt/airflow/")).resolve()
 
@@ -51,14 +58,15 @@ def upload_to_gcs(bucket: str, object_name: str, local_file_path: Path) -> None:
 
 default_args = {
     "owner": "airflow",
-    "start_date": datetime(2021, 1, 1),
+    "start_date": datetime(2019, 1, 1),
+    "end_date": datetime(2020, 1, 3),
     "depends_on_past": True,
     "retries": 1
 }
 
 
 with DAG(
-    dag_id="data_ingestion_postgres",
+    dag_id="data_ingestion_fhv_postgres",
     schedule_interval="0 6 2 * *",
     default_args=default_args,
     catchup=True,
@@ -66,7 +74,7 @@ with DAG(
     tags=['dtd-de-postgres']
 ) as dag:
 
-    dataset_file_name = "fhv_tripdata_{{ execution_date.strftime(\'%Y-%m\') }}.csv"
+    dataset_file_name = "fhv_tripdata_{{ logical_date.strftime(\'%Y-%m\') }}.csv"
     dataset_url = "https://nyc-tlc.s3.amazonaws.com/trip+data/" + dataset_file_name
     zone_file_url = "https://s3.amazonaws.com/nyc-tlc/misc/taxi+_zone_lookup.csv"
     zone_file_name = zone_file_url.split('/')[-1]
@@ -80,10 +88,49 @@ with DAG(
         bash_command=f'curl -sSL {dataset_url} > {path_to_local_home}/{dataset_file_name}'
     )
 
-    # download_zone_lookup = BashOperator(
-    #     task_id="download_zone_lookup",
-    #     bash_command=f"curl -sS {zone_file_url} > {zone_file_path}"
-    # )
+    download_zone_lookup = BashOperator(
+        task_id="download_zone_lookup",
+        bash_command=f"curl -sS {zone_file_url} > {zone_file_path}"
+    )
+
+    ingest_dataset = PythonOperator(
+        task_id="ingest_data",
+        python_callable=ingest_data_postgres,
+        op_kwargs=dict(
+                csv_file_path=f"{path_to_local_home}/{dataset_file_name}",
+                user=PG_USER,
+                password=PG_PASSWORD,
+                host=PG_HOST,
+                port=PG_PORT,
+                db=PG_DATABASE,
+                table_name="fhv_trips_{{logical_date.strftime(\'%Y_%m\')}}",
+                time_columns=["pickup_datetime", "dropoff_datetime"],
+        )
+    )
+
+    delete_dataset = BashOperator(
+        task_id="delete_dataset",
+        bash_command=f"rm {path_to_local_home}/{dataset_file_name}"
+    )
+
+    ingest_zone_lookup = PythonOperator(
+        task_id="ingest_update_zone_lookup",
+        python_callable=ingest_data_postgres,
+        op_kwargs=dict(
+                csv_file_path=f"{path_to_local_home}/{zone_file_name}",
+                user=PG_USER,
+                password=PG_PASSWORD,
+                host=PG_HOST,
+                port=PG_PORT,
+                db=PG_DATABASE,
+                table_name="zone_lookup_trips",
+        )
+    )
+
+    delete_zone_lookup = BashOperator(
+        task_id="delete_zone_lookup",
+        bash_command=f"rm {path_to_local_home}/{zone_file_name}"
+    )
 
     # format_to_parquet_dataset = PythonOperator(
     #     task_id="format_to_parquet_dataset",
@@ -99,5 +146,5 @@ with DAG(
 
 
 # Run tasks in parallel
-# download_dataset >> format_to_parquet_dataset
-# download_zone_lookup >> format_to_parquet_zone_lookup
+download_dataset >> ingest_dataset >> delete_dataset
+download_zone_lookup >> ingest_zone_lookup >> delete_zone_lookup

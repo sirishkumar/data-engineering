@@ -7,7 +7,7 @@ from functools import partial
 from pathlib import Path
 
 from time import time
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Optional
 from urllib.request import urlopen
 
 import pandas as pd
@@ -39,53 +39,37 @@ def download(url: str, dest_dir: Path) -> Path:
     return dest_path
 
 
-def main(params):
-    user = params.user
-    password = params.password
-    host = params.host
-    port = params.port
-    db = params.db
-    table_name = params.table_name
-    url = params.url
-    time_columns = params.time_columns
-
-    # Create destination directory
-    dest_dir = Path('resources/data/')
-    dest_dir.mkdir(exist_ok=True, parents=True)
-
-    file_path = download(url, dest_dir)
-
+def ingest_data_postgres(csv_file_path: Path,
+                         user: str,
+                         password: str,
+                         host: str, 
+                         port: int, 
+                         db: str, 
+                         table_name: str, 
+                         time_columns: Optional[List[str]] = None):
+    
     engine = create_engine(f'postgresql://{user}:{password}@{host}:{port}/{db}')
 
-    df_iter = pd.read_csv(file_path, iterator=True, chunksize=100000)
-    with console.status("[bold green]Loading data to database...") as status:
-        for i, df in enumerate(df_iter):
-            t_start = time()
+    # check if table already exists
+    if table_name in engine.table_names():
+        console.log(f"Table {table_name} already exists. Skipping...")
+        return
 
-            if i == 0:
-                status.update(f"[bold green]Created table {table_name}")
-                df.head(n=0).to_sql(name=table_name, con=engine, if_exists='replace')
+    df_iter = pd.read_csv(csv_file_path, iterator=True, chunksize=100000)
+    console.log("[bold green]Loading data to database...")
+    for i, df in enumerate(df_iter):
+        t_start = time()
 
+        if i == 0:
+            console.log(f"[bold green]Created/Replace table {table_name}")
+            df.head(n=0).to_sql(name=table_name, con=engine, if_exists='replace')
+
+        if time_columns:
             for col in time_columns:
                 df[col] = pd.to_datetime(df[col])
 
-            df.to_sql(name=table_name, con=engine, if_exists='append')
-            t_end = time()
+        df.to_sql(name=table_name, con=engine, if_exists='append')
+        t_end = time()
 
-            status.update(f"Inserted {i + 1} chunk in {t_end - t_start:.2f} seconds")
+        console.log(f"Inserted {i + 1} chunk in {t_end - t_start:.2f} seconds")
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Ingest CSV data to Postgres")
-    parser.add_argument("--user", default="root", help="user name for postgres")
-    parser.add_argument('--password', default="root", help='password for postgres')
-    parser.add_argument("--host", default="localhost", help="host for postgres")
-    parser.add_argument("--port", default="5432", help="port for postgres")
-    parser.add_argument("--db", default="ny_taxi", help="database name for postgres")
-    parser.add_argument("--url", required=True, type=str, help="List of csv files")
-    parser.add_argument("--table_name", required=True, type=str, help="name of the table where we will write the results to")
-    parser.add_argument("--time_columns", nargs="+", type=str, help="columns that should be converted to datetime")
-
-    args = parser.parse_args()
-
-    main(args)
