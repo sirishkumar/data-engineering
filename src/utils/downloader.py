@@ -52,7 +52,7 @@ def copy_url(task_id: TaskID, url: str, path: str) -> None:
     progress.update(task_id, total=int(response.info()["Content-length"]))
     with open(path, "wb") as dest_file:
         progress.start_task(task_id)
-        for data in iter(partial(response.read, 32768), b""):
+        for data in iter(partial(response.read, 32768), "b"):
             dest_file.write(data)
             progress.update(task_id, advance=len(data))
             if done_event.is_set():
