@@ -3,6 +3,11 @@ import os
 from pathlib import Path
 import logging
 
+from google.cloud import storage
+import pyarrow.csv as pv
+import pyarrow.parquet as pq
+
+
 # set all exported variables from this module
 __all__ = [
     "PROJECT_ID",
@@ -17,7 +22,7 @@ __all__ = [
     "upload_to_gcs",
 ]
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 PROJECT_ID = os.environ.get("GCP_PROJECT_ID")

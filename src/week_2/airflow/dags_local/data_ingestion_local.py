@@ -14,7 +14,7 @@ LOGGER = logging.getLogger(__name__)
 default_args = {
     "owner": "airflow",
     "start_date": datetime(2019, 1, 1),
-    "end_date": datetime(2020, 1, 3),
+    "end_date": datetime(2019, 12, 3),
     "depends_on_past": True,
     "retries": 1
 }
